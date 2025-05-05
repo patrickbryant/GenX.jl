@@ -150,6 +150,9 @@ function storage!(EP::Model, inputs::Dict, setup::Dict)
         if rep_periods > 1 && !isempty(inputs["STOR_LONG_DURATION"])
             long_duration_storage!(EP, inputs, setup)
         end
+        if rep_periods > 1 && !isempty(inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"]) # https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243
+            long_duration_storage_sparse_chronology!(EP, inputs, setup)
+        end
     end
 
     if !isempty(inputs["STOR_ASYMMETRIC"])

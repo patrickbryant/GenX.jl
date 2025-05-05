@@ -19,6 +19,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     STOR_ALL = inputs["STOR_ALL"]
     STOR_SHORT_DURATION = inputs["STOR_SHORT_DURATION"]
     STOR_LONG_DURATION = inputs["STOR_LONG_DURATION"]
+    STOR_LONG_DURATION_SPARSE_CHRONOLOGY = inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"]
     representative_periods = inputs["REP_PERIOD"]
 
     START_SUBPERIODS = inputs["START_SUBPERIODS"]
@@ -107,7 +108,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     # Links state of charge in first time step with decisions in last time step of each subperiod
     # We use a modified formulation of this constraint (cSoCBalLongDurationStorageStart) when operations wrapping and long duration storage are being modeled
-    if representative_periods > 1 && !isempty(STOR_LONG_DURATION)
+    if representative_periods > 1 && (!isempty(STOR_LONG_DURATION) || !isempty(STOR_LONG_DURATION_SPARSE_CHRONOLOGY))
         CONSTRAINTSET = STOR_SHORT_DURATION
     else
         CONSTRAINTSET = STOR_ALL

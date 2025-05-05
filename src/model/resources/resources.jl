@@ -761,6 +761,9 @@ cluster(r::AbstractResource) = r.cluster
 function is_LDS(rs::Vector{T}) where {T <: AbstractResource}
     findall(r -> get(r, :lds, default_zero) == 1, rs)
 end
+function is_LDS_SC(rs::Vector{T}) where {T <: AbstractResource} # https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243
+    findall(r -> get(r, :lds, default_zero) == 2, rs)
+end
 function is_SDS(rs::Vector{T}) where {T <: AbstractResource}
     findall(r -> get(r, :lds, default_zero) == 0, rs)
 end

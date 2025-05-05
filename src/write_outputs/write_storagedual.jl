@@ -27,23 +27,37 @@ function write_storagedual(path::AbstractString, inputs::Dict, setup::Dict, EP::
 
     # Loop over W separately hours_per_subperiod
     if !isempty(STOR_ALL)
-        STOR_ALL_NONLDS = setdiff(STOR_ALL, inputs["STOR_LONG_DURATION"])
-        STOR_ALL_LDS = intersect(STOR_ALL, inputs["STOR_LONG_DURATION"])
+        STOR_LDS    = inputs["STOR_LONG_DURATION"]
+        STOR_LDS_SC = inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"]
+        STOR_LDS_ALL = union(STOR_LDS, STOR_LDS_SC)
+        STOR_ALL_NONLDS = setdiff(STOR_ALL, STOR_LDS_ALL)
+        # STOR_ALL_LDS = intersect(STOR_ALL, STOR_LDS)
         dual_values[STOR_ALL, INTERIOR_SUBPERIODS] = (dual.(EP[:cSoCBalInterior][
             INTERIOR_SUBPERIODS,
             STOR_ALL]).data ./ inputs["omega"][INTERIOR_SUBPERIODS])'
         dual_values[STOR_ALL_NONLDS, START_SUBPERIODS] = (dual.(EP[:cSoCBalStart][
             START_SUBPERIODS,
             STOR_ALL_NONLDS]).data ./ inputs["omega"][START_SUBPERIODS])'
-        if !isempty(STOR_ALL_LDS)
-            if inputs["REP_PERIOD"] > 1
-                dual_values[STOR_ALL_LDS, START_SUBPERIODS] = (dual.(EP[:cSoCBalLongDurationStorageStart][
+        if !isempty(STOR_LDS)
+            if REP_PERIOD > 1
+                dual_values[STOR_LDS, START_SUBPERIODS] = (dual.(EP[:cSoCBalLongDurationStorageStart][
                     1:REP_PERIOD,
-                    STOR_ALL_LDS]).data ./ inputs["omega"][START_SUBPERIODS])'
+                    STOR_LDS]).data ./ inputs["omega"][START_SUBPERIODS])'
             else
-                dual_values[STOR_ALL_LDS, START_SUBPERIODS] = (dual.(EP[:cSoCBalStart][
+                dual_values[STOR_LDS, START_SUBPERIODS] = (dual.(EP[:cSoCBalStart][
                     START_SUBPERIODS,
-                    STOR_ALL_LDS]).data ./ inputs["omega"][START_SUBPERIODS])'
+                    STOR_LDS]).data ./ inputs["omega"][START_SUBPERIODS])'
+            end
+        end
+        if !isempty(STOR_LDS_SC)
+            if REP_PERIOD > 1
+                dual_values[STOR_LDS_SC, START_SUBPERIODS] = (dual.(EP[:cDeltaStoreInRepPeriod][
+                    1:REP_PERIOD,
+                    STOR_LDS_SC]).data ./ inputs["omega"][START_SUBPERIODS])'
+            else
+                dual_values[STOR_LDS_SC, START_SUBPERIODS] = (dual.(EP[:cSoCBalStart][
+                    START_SUBPERIODS,
+                    STOR_LDS_SC]).data ./ inputs["omega"][START_SUBPERIODS])'
             end
         end
     end
@@ -56,7 +70,7 @@ function write_storagedual(path::AbstractString, inputs::Dict, setup::Dict, EP::
             VS_NONLDS,
             START_SUBPERIODS]).data)' ./ inputs["omega"][START_SUBPERIODS])'
         if !isempty(VS_LDS)
-            if inputs["REP_PERIOD"] > 1
+            if REP_PERIOD > 1
                 dual_values[VS_LDS, START_SUBPERIODS] = ((dual.(EP[:cVreStorSoCBalLongDurationStorageStart][
                     VS_LDS,
                     1:REP_PERIOD]).data)' ./ inputs["omega"][START_SUBPERIODS])'

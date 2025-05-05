@@ -1161,6 +1161,7 @@ function add_resources_to_input_data!(inputs::Dict,
     inputs["STOR_HYDRO_LONG_DURATION"] = intersect(inputs["HYDRO_RES"], is_LDS(gen))
     inputs["STOR_HYDRO_SHORT_DURATION"] = intersect(inputs["HYDRO_RES"], is_SDS(gen))
     inputs["STOR_LONG_DURATION"] = intersect(inputs["STOR_ALL"], is_LDS(gen))
+    inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"] = intersect(inputs["STOR_ALL"], is_LDS_SC(gen)) # https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243
     inputs["STOR_SHORT_DURATION"] = intersect(inputs["STOR_ALL"], is_SDS(gen))
 
     ## VRE

@@ -224,7 +224,7 @@ function write_outputs(EP::Model, path::AbstractString, setup::Dict, inputs::Dic
     # Output additional variables related inter-period energy transfer via storage
     representative_periods = inputs["REP_PERIOD"]
     if representative_periods > 1 &&
-       (!isempty(inputs["STOR_LONG_DURATION"]) || !isempty(VS_LDS))
+       (!isempty(inputs["STOR_LONG_DURATION"]) || !isempty(inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"]) || !isempty(VS_LDS))
         if output_settings_d["WriteOpWrapLDSStorInit"]
             elapsed_time_lds_init = @elapsed write_opwrap_lds_stor_init(path,
                 inputs,

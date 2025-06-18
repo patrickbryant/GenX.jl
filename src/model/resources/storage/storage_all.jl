@@ -35,7 +35,16 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     ### Variables ###
 
     # Storage level of resource "y" at hour "t" [MWh] on zone "z" - unbounded
-    @variable(EP, vS[y in STOR_ALL, t = 1:T]>=0)
+    @variable(EP, vS[y in STOR_ALL, t = 1:T])
+
+    # don't apply default constraints if using sparse chronology representation
+    if representative_periods > 1 && (!isempty(STOR_LONG_DURATION_SPARSE_CHRONOLOGY))
+        CONSTRAINTSET_DEFAULTS = setdiff(STOR_ALL, STOR_LONG_DURATION_SPARSE_CHRONOLOGY)
+    else
+        CONSTRAINTSET_DEFAULTS = STOR_ALL
+    end
+
+    @constraint(EP, cSoCZero[y in CONSTRAINTSET_DEFAULTS, t=1:T], vS[y,t]>=0)
 
     # Energy withdrawn from grid by resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vCHARGE[y in STOR_ALL, t = 1:T]>=0)
@@ -125,7 +134,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     @constraints(EP,
         begin
             # Maximum energy stored must be less than energy capacity
-            [y in STOR_ALL, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
+            [y in CONSTRAINTSET_DEFAULTS, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
 
             # energy stored for the next hour
             cSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
@@ -145,7 +154,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     ##Patrick Bryant's suggestion implementation - Start
     # Maximum charging rate must be less than available storage capacity                                                                                                                                                                                                                           
     @constraint(EP,
-                [y in STOR_ALL, t in 1:T],
+                [y in CONSTRAINTSET_DEFAULTS, t in 1:T],
                 efficiency_up(gen[y]) * vCHARGE[y, t] <= eTotalCapEnergy[y] - vS[y, hoursbefore(hours_per_subperiod, t, 1)])
     ##Patrick Bryant's suggestion implementation - End
 

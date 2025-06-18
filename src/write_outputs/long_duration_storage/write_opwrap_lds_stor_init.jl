@@ -109,7 +109,7 @@ function write_opwrap_lds_stor_init(path::AbstractString,
             for t_i in t_interior
                 t_p = t_partition[t_i]
                 t_r = t_rep_period[mod1(t_i, hours_per_subperiod)]
-                SOC_t[stor_lds_sc, t_p+1] = SOC_t[stor_lds_sc, t_p] .+ efficiency_up.(gen[stor_lds_sc]).*v_charge[stor_lds_sc, t_r] .- 1 ./ efficiency_down.(gen[stor_lds_sc]).*v_P[stor_lds_sc, t_r]
+                SOC_t[stor_lds_sc, t_p+1] = SOC_t[stor_lds_sc, t_p] .* (1 .- self_discharge.(gen[stor_lds_sc])) .+ efficiency_up.(gen[stor_lds_sc]).*v_charge[stor_lds_sc, t_r] .- 1 ./ efficiency_down.(gen[stor_lds_sc]).*v_P[stor_lds_sc, t_r]
             end
         end
     end

@@ -43,16 +43,23 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     @constraint(EP, cSoCBalLongDurationStorageStart[y in STOR_LONG_DURATION, r=1:NRepPeriods],
                 vS[y, hours_per_subperiod*(r-1)+1] == eTotalCapEnergy[y]/2)
     
+    # compute hourly changes in stored energy within representative periods
+    @expression(EP, eDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod],
+                vS[y, hours_per_subperiod*(r-1)+h] - vS[y, hours_per_subperiod*(r-1)+1])
+    
+    # To get delta store across full loop (1,2,...,n-1,n,1) need to include delta from last hour back to 1.    
+    @expression(EP, eDeltaStoreLastToFirst[y in STOR_LONG_DURATION, r=1:NRepPeriods],
+                - vS[y, hours_per_subperiod*r]*self_discharge(gen[y])
+                - vP[     y, hours_per_subperiod*(r-1)+1]/efficiency_down(gen[y])
+                + vCHARGE[y, hours_per_subperiod*(r-1)+1]*efficiency_up(  gen[y]) )
+    
     ### Implement sparse chonology equations and constraints from https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243 ###
     # Total Constraints = (NRepPeriods + 3*NPartitions + 2*NPartitionsLongerThanOne + 2*NRepPeriods*(hours_per_subperiod-1))*NBatteries
 
     # (10): change in energy store over representative period
     @variable(EP,   vDeltaStoreRepPeriodLoop[y in STOR_LONG_DURATION, r=1:NRepPeriods])
     @constraint(EP, cDeltaStoreRepPeriodLoop[r=1:NRepPeriods, y in STOR_LONG_DURATION], # cSoCBalLongDurationStorageStart. Need to index by r,y rather than y,r due to array division in write_storagedual.jl. NRepPeriods*NBatteries
-                vDeltaStoreRepPeriodLoop[y,r] == (vS[y, hours_per_subperiod*r] - vS[y, hours_per_subperiod*(r-1)+1]
-                                                - vS[y, hours_per_subperiod*r]*self_discharge(gen[y]) # to get delta store across full loop (1,2,...,n-1,n,1) need to include delta from last hour back to 1.
-                                                - vP[     y, hours_per_subperiod*(r-1)+1]/efficiency_down(gen[y])
-                                                + vCHARGE[y, hours_per_subperiod*(r-1)+1]*efficiency_up(  gen[y]))) 
+                vDeltaStoreRepPeriodLoop[y,r] == eDeltaStoreInRepPeriod[y,r,end] + eDeltaStoreLastToFirst[y,r] )
 
     # (11): Connect initial SOC for each partition to the next partition
     @variable(EP,       vPartitionInitialStore[y in STOR_LONG_DURATION, p=1:NPartitions])
@@ -62,12 +69,12 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     # (12): Define a variable which tracks the maximum increase in SOC within each representative period
     @variable(EP,   vMaxDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods])
     @constraint(EP, cMaxDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod], # NRepPeriods*(hours_per_subperiod-1)*NBatteries
-                vMaxDeltaStoreInRepPeriod[y,r] >= vS[y, hours_per_subperiod*(r-1)+h] - vS[y, hours_per_subperiod*(r-1)+1] )
+                vMaxDeltaStoreInRepPeriod[y,r] >= eDeltaStoreInRepPeriod[y,r,h] )# + eDeltaStoreLastToFirst[y,r] )
 
     # (13): Define a variable which tracks the maximum decrease (minimum over changes) in SOC within each representative period
     @variable(EP,   vMinDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods])
     @constraint(EP, cMinDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod], # NRepPeriods*(hours_per_subperiod-1)*NBatteries
-                vMinDeltaStoreInRepPeriod[y,r] <= vS[y, hours_per_subperiod*(r-1)+h] - vS[y, hours_per_subperiod*(r-1)+1] )
+                vMinDeltaStoreInRepPeriod[y,r] <= eDeltaStoreInRepPeriod[y,r,h] )# + eDeltaStoreLastToFirst[y,r] )
 
     # (14): Constrain minimum SOC in first rep period in each partition to be greater than zero
     @constraint(EP, cPartitionMinStoreInFirstRepPeriod[y in STOR_LONG_DURATION, p=1:NPartitions], # NPartitions*NBatteries

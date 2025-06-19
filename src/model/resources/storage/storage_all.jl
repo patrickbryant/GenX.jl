@@ -108,35 +108,36 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     # Links state of charge in first time step with decisions in last time step of each subperiod
     # We use a modified formulation of this constraint (cSoCBalLongDurationStorageStart) when operations wrapping and long duration storage are being modeled
-    # don't apply default constraints if using LDS representation, for example vS is not the actual SoC for LDS representations so it should not be restricted.
-    if representative_periods > 1 && (!isempty(STOR_LONG_DURATION) || !isempty(STOR_LONG_DURATION_SPARSE_CHRONOLOGY))
-        CONSTRAINTSET = STOR_SHORT_DURATION
+    if representative_periods > 1
+        CONSTRAINTSET_LINK = STOR_SHORT_DURATION
     else
-        CONSTRAINTSET = STOR_ALL
+        CONSTRAINTSET_LINK = STOR_ALL
     end
-    @constraint(EP,
-        cSoCBalStart[t in START_SUBPERIODS, y in CONSTRAINTSET],
-        vS[y, t]==
-        vS[y, t + hours_per_subperiod - 1] -
-        (1 / efficiency_down(gen[y]) * vP[y, t])
-        +
-        (efficiency_up(gen[y]) * vCHARGE[y, t]) -
-        (self_discharge(gen[y]) * vS[y, t + hours_per_subperiod - 1]))
+    # don't apply vS constraints in Sparse Chronology LDS representation: vS is not the actual SoC in the SC representation so it should not be restricted.
+    # For reasons I don't quite understand, we do want vS to be capped for the standard GenX LDS representation.
+    if representative_periods > 1
+        CONSTRAINTSET_vS = setdiff(STOR_ALL, STOR_LONG_DURATION_SPARSE_CHRONOLOGY)
+    else
+        CONSTRAINTSET_vS = STOR_ALL
+    end
+    @constraint(EP, cSoCBalStart[t in START_SUBPERIODS, y in CONSTRAINTSET_LINK],
+                vS[y,t] == (vS[y, t+hours_per_subperiod-1]*(1-self_discharge(gen[y]))
+                            - vP[     y,t]/efficiency_down(gen[y])
+                            + vCHARGE[y,t]*efficiency_up(  gen[y])) )
 
     @constraints(EP,
-        begin
-            # Minimum energy stored must be greater than zero
-            [y in CONSTRAINTSET, t in 1:T], vS[y, t] >= 0
-            # Maximum energy stored must be less than energy capacity
-            [y in CONSTRAINTSET, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
+                 begin
+                     # Minimum energy stored must be greater than zero
+                     cSoCMin[y in CONSTRAINTSET_vS, t in 1:T], vS[y, t] >= 0
+                     # Maximum energy stored must be less than energy capacity
+                     cSoCMax[y in CONSTRAINTSET_vS, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
 
-            # energy stored for the next hour
-            cSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
-            vS[y, t] ==
-            vS[y, t - 1] - (1 / efficiency_down(gen[y]) * vP[y, t]) +
-            (efficiency_up(gen[y]) * vCHARGE[y, t]) -
-            (self_discharge(gen[y]) * vS[y, t - 1])
-        end)
+                     # energy stored for the next hour
+                     cSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
+                     vS[y,t] == (vS[y,t-1]*(1-self_discharge(gen[y]))
+                                 - vP[     y,t]/efficiency_down(gen[y])
+                                 + vCHARGE[y,t]*efficiency_up(  gen[y]))
+                 end)
 
     # Hourly matching constraints
     if HourlyMatching == 1
@@ -167,28 +168,20 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
         # Links energy held in reserve in first time step with decisions in last time step of each subperiod
         # We use a modified formulation of this constraint (cVSoCBalLongDurationStorageStart) when operations wrapping and long duration storage are being modeled
-        @constraint(EP,
-            cVSoCBalStart[t in START_SUBPERIODS, y in CONSTRAINTSET],
-            vCAPRES_socinreserve[y,
-                t]==
-            vCAPRES_socinreserve[y, t + hours_per_subperiod - 1] +
-            (1 / efficiency_down(gen[y]) * vCAPRES_discharge[y, t])
-            -
-            (efficiency_up(gen[y]) * vCAPRES_charge[y, t]) - (self_discharge(gen[y]) *
-             vCAPRES_socinreserve[y, t + hours_per_subperiod - 1]))
-
+        @constraint(EP, cVSoCBalStart[t in START_SUBPERIODS, y in CONSTRAINTSET_LINK],
+                    vCAPRES_socinreserve[y,t] == (vCAPRES_socinreserve[y, t+hours_per_subperiod-1]*(1-self_discharge(gen[y]))
+                                                  + vCAPRES_discharge[y,t]/efficiency_down(gen[y])
+                                                  - vCAPRES_charge[   y,t]*efficiency_up(  gen[y])) )
+        
         # energy held in reserve for the next hour
-        @constraint(EP,
-            cVSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
-            vCAPRES_socinreserve[y, t]== vCAPRES_socinreserve[y, t - 1] +
-            (1 / efficiency_down(gen[y]) * vCAPRES_discharge[y, t]) -
-            (efficiency_up(gen[y]) * vCAPRES_charge[y, t]) -
-            (self_discharge(gen[y]) * vCAPRES_socinreserve[y, t - 1]))
+        @constraint(EP, cVSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
+                    vCAPRES_socinreserve[y,t] == (vCAPRES_socinreserve[y,t-1]*(1-self_discharge(gen[y])) 
+                                                  + vCAPRES_discharge[y,t]/efficiency_down(gen[y])
+                                                  - vCAPRES_charge[   y,t]*efficiency_up(  gen[y])) )
 
         # energy held in reserve acts as a lower bound on the total energy held in storage
-        @constraint(EP,
-            cSOCMinCapRes[t in 1:T, y in STOR_ALL],
-            vS[y, t] >= vCAPRES_socinreserve[y, t])
+        @constraint(EP, cSOCMinCapRes[t in 1:T, y in STOR_ALL],
+                    vS[y, t] >= vCAPRES_socinreserve[y, t])
     end
 end
 

@@ -37,15 +37,6 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     # Storage level of resource "y" at hour "t" [MWh] on zone "z" - unbounded
     @variable(EP, vS[y in STOR_ALL, t = 1:T])
 
-    # don't apply default constraints if using sparse chronology representation
-    if representative_periods > 1 && (!isempty(STOR_LONG_DURATION_SPARSE_CHRONOLOGY))
-        CONSTRAINTSET_DEFAULTS = setdiff(STOR_ALL, STOR_LONG_DURATION_SPARSE_CHRONOLOGY)
-    else
-        CONSTRAINTSET_DEFAULTS = STOR_ALL
-    end
-
-    @constraint(EP, cSoCZero[y in CONSTRAINTSET_DEFAULTS, t=1:T], vS[y,t]>=0)
-
     # Energy withdrawn from grid by resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vCHARGE[y in STOR_ALL, t = 1:T]>=0)
 
@@ -117,6 +108,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     # Links state of charge in first time step with decisions in last time step of each subperiod
     # We use a modified formulation of this constraint (cSoCBalLongDurationStorageStart) when operations wrapping and long duration storage are being modeled
+    # don't apply default constraints if using LDS representation, for example vS is not the actual SoC for LDS representations so it should not be restricted.
     if representative_periods > 1 && (!isempty(STOR_LONG_DURATION) || !isempty(STOR_LONG_DURATION_SPARSE_CHRONOLOGY))
         CONSTRAINTSET = STOR_SHORT_DURATION
     else
@@ -133,8 +125,10 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     @constraints(EP,
         begin
+            # Minimum energy stored must be greater than zero
+            [y in CONSTRAINTSET, t in 1:T], vS[y, t] >= 0
             # Maximum energy stored must be less than energy capacity
-            [y in CONSTRAINTSET_DEFAULTS, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
+            [y in CONSTRAINTSET, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
 
             # energy stored for the next hour
             cSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],
@@ -154,8 +148,8 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     ##Patrick Bryant's suggestion implementation - Start
     # Maximum charging rate must be less than available storage capacity                                                                                                                                                                                                                           
     @constraint(EP,
-                [y in CONSTRAINTSET_DEFAULTS, t in 1:T],
-                efficiency_up(gen[y]) * vCHARGE[y, t] <= eTotalCapEnergy[y] - vS[y, hoursbefore(hours_per_subperiod, t, 1)])
+                [y in STOR_ALL, t in 1:T],
+                efficiency_up(gen[y]) * vCHARGE[y, t] <= eTotalCapEnergy[y] - vS[y, hoursbefore(hours_per_subperiod, t, 1)])# this needs to be modified for LDS representations...
     ##Patrick Bryant's suggestion implementation - End
 
     # Storage discharge and charge power (and reserve contribution) related constraints:
@@ -253,7 +247,7 @@ function storage_all_operation!(EP::Model, inputs::Dict, setup::Dict)
             [y in STOR_REG, t in 1:T],
             efficiency_up(gen[y]) *
             (vCHARGE[y, t] +
-             vREG_charge[y, t])<=eTotalCapEnergy[y] - vS[y, hoursbefore(p, t, 1)])
+             vREG_charge[y, t])<=eTotalCapEnergy[y] - vS[y, hoursbefore(p, t, 1)])# this needs to be modified for LDS representations...
         # Note: maximum charge rate is also constrained by maximum charge power capacity, but as this differs by storage type,
         # this constraint is set in functions below for each storage type
     end
@@ -272,5 +266,5 @@ function storage_all_operation!(EP::Model, inputs::Dict, setup::Dict)
     # Maximum discharging rate (and contribution to reserves up) must be less than available stored energy in prior period
     @constraint(EP,
         [y in STOR_ALL, t in 1:T],
-        expr[y, t]<=vS[y, hoursbefore(p, t, 1)] * efficiency_down(gen[y]))
+        expr[y, t]<=vS[y, hoursbefore(p, t, 1)] * efficiency_down(gen[y]))# this needs to be modified for LDS representations...
 end

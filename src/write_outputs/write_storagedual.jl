@@ -51,7 +51,7 @@ function write_storagedual(path::AbstractString, inputs::Dict, setup::Dict, EP::
         end
         if !isempty(STOR_LDS_SC)
             if REP_PERIOD > 1
-                dual_values[STOR_LDS_SC, START_SUBPERIODS] = (dual.(EP[:cDeltaStoreInRepPeriod][
+                dual_values[STOR_LDS_SC, START_SUBPERIODS] = (dual.(EP[:cDeltaStoreRepPeriodLoop][
                     1:REP_PERIOD,
                     STOR_LDS_SC]).data ./ inputs["omega"][START_SUBPERIODS])'
             else

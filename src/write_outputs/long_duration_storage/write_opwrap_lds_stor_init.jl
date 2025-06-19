@@ -102,14 +102,16 @@ function write_opwrap_lds_stor_init(path::AbstractString,
         PARTITION_LENGTHS_HOUR = PARTITION_LENGTHS*hours_per_subperiod
         PARTITION_REP_PERIOD_INDEX_HOUR = 1 .+ (PARTITION_REP_PERIOD_INDEX.-1)*hours_per_subperiod
         for p in 1:NPartitions
-            t_interior   = 1:PARTITION_LENGTHS_HOUR[p]-1
+            t_interior   = 1:PARTITION_LENGTHS_HOUR[p]
             t_partition  = PARTITION_STARTS_HOUR[p].+t_interior.-1
-            t_rep_period = PARTITION_REP_PERIOD_INDEX_HOUR[p]:PARTITION_REP_PERIOD_INDEX_HOUR[p].+hours_per_subperiod.-1
+            t_rep_period = PARTITION_REP_PERIOD_INDEX_HOUR[p]:PARTITION_REP_PERIOD_INDEX_HOUR[p]+hours_per_subperiod
 
-            for t_i in t_interior
+            for t_i in t_interior[2:end]
                 t_p = t_partition[t_i]
                 t_r = t_rep_period[mod1(t_i, hours_per_subperiod)]
-                SOC_t[stor_lds_sc, t_p+1] = SOC_t[stor_lds_sc, t_p] .* (1 .- self_discharge.(gen[stor_lds_sc])) .+ efficiency_up.(gen[stor_lds_sc]).*v_charge[stor_lds_sc, t_r] .- 1 ./ efficiency_down.(gen[stor_lds_sc]).*v_P[stor_lds_sc, t_r]
+                SOC_t[stor_lds_sc, t_p] = (SOC_t[stor_lds_sc, t_p-1] .* (1 .- self_discharge.(gen[stor_lds_sc]))
+                                           .+ v_charge[stor_lds_sc, t_r].*efficiency_up.(  gen[stor_lds_sc])
+                                           .- v_P[     stor_lds_sc, t_r]./efficiency_down.(gen[stor_lds_sc]))
             end
         end
     end

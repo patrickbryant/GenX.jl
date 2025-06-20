@@ -34,8 +34,11 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     ### Variables ###
 
-    # Storage level of resource "y" at hour "t" [MWh] on zone "z" - unbounded
+    # Storage level of resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vS[y in STOR_ALL, t = 1:T])
+    for y in setdiff(STOR_ALL, STOR_LONG_DURATION_SPARSE_CHRONOLOGY)
+        set_lower_bound.(vS[y,:], 0)
+    end
 
     # Energy withdrawn from grid by resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vCHARGE[y in STOR_ALL, t = 1:T]>=0)
@@ -127,9 +130,8 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     @constraints(EP,
                  begin
-                     # Minimum energy stored must be greater than zero
-                     cSoCMin[y in CONSTRAINTSET_vS, t in 1:T], vS[y, t] >= 0
-                     # Maximum energy stored must be less than energy capacity
+                     # Maximum energy stored must be less than energy capacity.
+                     # Can't just put this as an upper bound in the variable def because it can change if optimizing over multiple years.
                      cSoCMax[y in CONSTRAINTSET_vS, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
 
                      # energy stored for the next hour

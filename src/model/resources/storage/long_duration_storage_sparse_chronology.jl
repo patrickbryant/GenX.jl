@@ -10,7 +10,7 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     CapacityReserveMargin = setup["CapacityReserveMargin"]
 
     STOR_LONG_DURATION = inputs["STOR_LONG_DURATION_SPARSE_CHRONOLOGY"]
-    hours_per_subperiod = inputs["hours_per_subperiod"] #total number of hours per subperiod
+    NHoursPerRepPeriod = inputs["hours_per_subperiod"] #total number of hours per subperiod
     dfPeriodMap = inputs["Period_Map"] # Dataframe that maps modeled periods to representative periods
     NPeriods = size(dfPeriodMap)[1] # Number of modeled periods
     println("NPeriods: ",NPeriods)
@@ -39,26 +39,27 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     vS = EP[:vS] # stored energy
     vP = EP[:vP] # discharge power
 
-    # vS at start of each representative period is a free parameter in principle. In practice it effects capacity/regulation reserve constraints in storage_all.jl
-    @constraint(EP, cSoCBalLongDurationStorageStart[y in STOR_LONG_DURATION, r=1:NRepPeriods],
-                vS[y, hours_per_subperiod*(r-1)+1] == eTotalCapEnergy[y]/2)
+    # # vS at start of each representative period is a free parameter in principle. In practice it effects capacity/regulation reserve constraints in storage_all.jl
+    # # We need to remove all dependence on vS from the model in storage_all when using this representation...
+    # @constraint(EP, cSoCBalLongDurationStorageStart[y in STOR_LONG_DURATION, r=1:NRepPeriods],
+    #             vS[y, NHoursPerRepPeriod*(r-1)+1] == eTotalCapEnergy[y]/2)
     
     # compute hourly changes in stored energy within representative periods
-    @expression(EP, eDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod],
-                vS[y, hours_per_subperiod*(r-1)+h] - vS[y, hours_per_subperiod*(r-1)+1])
+    @expression(EP, eDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:NHoursPerRepPeriod],
+                vS[y, NHoursPerRepPeriod*(r-1)+h] - vS[y, NHoursPerRepPeriod*(r-1)+1])
     
     # To get delta store across full loop (1,2,...,n-1,n,1) need to include delta from last hour back to 1.    
     @expression(EP, eDeltaStoreLastToFirst[y in STOR_LONG_DURATION, r=1:NRepPeriods],
-                - vS[y, hours_per_subperiod*r]*self_discharge(gen[y])
-                - vP[     y, hours_per_subperiod*(r-1)+1]/efficiency_down(gen[y])
-                + vCHARGE[y, hours_per_subperiod*(r-1)+1]*efficiency_up(  gen[y]) )
+                - vS[y, NHoursPerRepPeriod*r]*self_discharge(gen[y])
+                - vP[     y, NHoursPerRepPeriod*(r-1)+1]/efficiency_down(gen[y])
+                + vCHARGE[y, NHoursPerRepPeriod*(r-1)+1]*efficiency_up(  gen[y]) )
     
     ### Implement sparse chonology equations and constraints from https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243 ###
-    # Total Constraints = 2*NRepPeriods + 3*NPartitions + 2*NPartitionsLongerThanOne + 2*NRepPeriods*(hours_per_subperiod-1) = 2*11+3*21+2*13+2*11*167 = 3785
-    # Total Variables   = 3*NRepPeriods + NPartitions) = 3*11+21 = 54       [not counting hours_per_subperiod*NRepPeriods vS, vP, vCHARGE which are the same as other storage representations]
+    # Total Constraints = 2*NRepPeriods + 3*NPartitions + 2*NPartitionsLongerThanOne + 2*NRepPeriods*(NHoursPerRepPeriod-1) = 2*11+3*21+2*13+2*11*167 = 3785
+    # Total Variables   = 3*NRepPeriods + NPartitions) = 3*11+21 = 54       [not counting NHoursPerRepPeriod*NRepPeriods vS, vP, vCHARGE which are the same as other storage representations]
     # variables in default GenX representation = vSOCw[NPeriods], vdSOC[NRepPeriods], vdSOC_maxPos[NRepPeriods], vdSOC_maxNeg[NRepPeriods] = 52+3*11 = 85
     # there should be 31 fewer variables per battery with SC, and that is what I observe!
-    # constraints in default GenX representation = 2*NPeriods + 2*NRepPeriods + 2*(NPeriods-NRepPeriods) + 2*NRepPeriods*(hours_per_subperiod-1) + NRepPeriods*hours_per_subperiod = 4*52+2*11*167+1*11*168 = 5730
+    # constraints in default GenX representation = 2*NPeriods + 2*NRepPeriods + 2*(NPeriods-NRepPeriods) + 2*NRepPeriods*(NHoursPerRepPeriod-1) + NRepPeriods*NHoursPerRepPeriod = 4*52+2*11*167+1*11*168 = 5730
     # there should be 1945 fewer constraints per battery with SC, which is what I observe!
 
     # (10): change in energy store over representative period
@@ -73,13 +74,13 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     
     # (12): Define a variable which tracks the maximum increase in SOC within each representative period
     @variable(EP,   vMaxDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods]) # NRepPeriods
-    @constraint(EP, cMaxDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod], # NRepPeriods*(hours_per_subperiod-1)
-                vMaxDeltaStoreInRepPeriod[y,r] >= eDeltaStoreInRepPeriod[y,r,h] )# + eDeltaStoreLastToFirst[y,r] )
+    @constraint(EP, cMaxDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:NHoursPerRepPeriod], # NRepPeriods*(NHoursPerRepPeriod-1)
+                vMaxDeltaStoreInRepPeriod[y,r] >= eDeltaStoreInRepPeriod[y,r,h] )
 
     # (13): Define a variable which tracks the maximum decrease (minimum over changes) in SOC within each representative period
     @variable(EP,   vMinDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods]) # NRepPeriods
-    @constraint(EP, cMinDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:hours_per_subperiod], # NRepPeriods*(hours_per_subperiod-1)
-                vMinDeltaStoreInRepPeriod[y,r] <= eDeltaStoreInRepPeriod[y,r,h] )# + eDeltaStoreLastToFirst[y,r] )
+    @constraint(EP, cMinDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:NHoursPerRepPeriod], # NRepPeriods*(NHoursPerRepPeriod-1)
+                vMinDeltaStoreInRepPeriod[y,r] <= eDeltaStoreInRepPeriod[y,r,h] )
 
     # (14): Constrain minimum SOC in first rep period in each partition to be greater than zero
     @constraint(EP, cPartitionMinStoreInFirstRepPeriod[y in STOR_LONG_DURATION, p=1:NPartitions], # NPartitions

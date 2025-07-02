@@ -138,7 +138,7 @@ function long_duration_storage!(EP::Model, inputs::Dict, setup::Dict)
         # Build up inventory can be positive or negative
         @variable(EP, vCAPRES_dsoc[y in STOR_LONG_DURATION, w = 1:REP_PERIOD])
     end
-
+ 
     # Additional constraints to prevent violation of SoC limits in non-representative periods
     if setup["LDSAdditionalConstraints"] == 1 && !isempty(NON_REP_PERIODS_INDEX)
         # Maximum positive storage inventory change within subperiod
@@ -155,7 +155,7 @@ function long_duration_storage!(EP::Model, inputs::Dict, setup::Dict)
     # Alternative to cSoCBalStart constraint which is included when not modeling operations wrapping and long duration storage
     # Note: tw_min = hours_per_subperiod*(w-1)+1; tw_max = hours_per_subperiod*w
     @constraint(EP, cSoCBalLongDurationStorageStart[w = 1:REP_PERIOD, y in STOR_LONG_DURATION],
-                vS[y, hours_per_subperiod*(w-1)+1] == ((vS[y, hours_per_subperiod*w] - vdSOC[y,w]) * (1-self_discharge(gen[y]))
+                vS[y, hours_per_subperiod*(w-1)+1] == ((vS[y, hours_per_subperiod*w] - vdSOC[y,w]) * (1-self_discharge(gen[y])) # the use of self_discharge here seems inconsistent
                                                        - vP[     y, hours_per_subperiod*(w-1)+1]/efficiency_down(gen[y])
                                                        + vCHARGE[y, hours_per_subperiod*(w-1)+1]*efficiency_up(  gen[y])) )
 

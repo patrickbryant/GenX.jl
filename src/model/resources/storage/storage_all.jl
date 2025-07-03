@@ -36,9 +36,6 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
 
     # Storage level of resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vS[y in STOR_ALL, t = 1:T]>=0)
-    # for y in setdiff(STOR_ALL, union(STOR_LONG_DURATION_SPARSE_CHRONOLOGY, STOR_LONG_DURATION))
-    #     set_lower_bound.(vS[y,:], 0)
-    # end
 
     # Energy withdrawn from grid by resource "y" at hour "t" [MWh] on zone "z"
     @variable(EP, vCHARGE[y in STOR_ALL, t = 1:T]>=0)
@@ -116,14 +113,6 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
     else
         CONSTRAINTSET_LINK = STOR_ALL
     end
-    # don't apply vS constraints in Sparse Chronology LDS representation: vS is not the actual SoC in the SC representation so it should not be restricted.
-    # For reasons I don't quite understand, we do want vS to be capped for the standard GenX LDS representation.
-    # if representative_periods > 1
-    #     CONSTRAINTSET_vS = setdiff(STOR_ALL, union(STOR_LONG_DURATION_SPARSE_CHRONOLOGY, STOR_LONG_DURATION))
-    # else
-    #     CONSTRAINTSET_vS = STOR_ALL
-    # end
-    CONSTRAINTSET_vS = STOR_ALL
 
     @constraint(EP, cSoCBalStart[t in START_SUBPERIODS, y in CONSTRAINTSET_LINK],
                 vS[y,t] == (vS[y, t+hours_per_subperiod-1]*(1-self_discharge(gen[y]))
@@ -134,7 +123,7 @@ function storage_all!(EP::Model, inputs::Dict, setup::Dict)
                  begin
                      # Maximum energy stored must be less than energy capacity.
                      # Can't just put this as an upper bound in the variable def because it can change if optimizing over multiple years.
-                     cSoCMax[y in CONSTRAINTSET_vS, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
+                     cSoCMax[y in STOR_ALL, t in 1:T], vS[y, t] <= eTotalCapEnergy[y]
 
                      # energy stored for the next hour
                      cSoCBalInterior[t in INTERIOR_SUBPERIODS, y in STOR_ALL],

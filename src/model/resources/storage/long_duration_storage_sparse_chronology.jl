@@ -39,10 +39,7 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
     vS = EP[:vS] # stored energy
     vP = EP[:vP] # discharge power
 
-    # # vS at start of each representative period is a free parameter in principle. In practice it effects capacity/regulation reserve constraints in storage_all.jl
-    # # We need to remove all dependence on vS from the model in storage_all when using this representation...
-    # @constraint(EP, cSoCBalLongDurationStorageStart[y in STOR_LONG_DURATION, r=1:NRepPeriods],
-    #             vS[y, NHoursPerRepPeriod*(r-1)+1] == eTotalCapEnergy[y]/2)
+    # # We should remove all dependence on vS from the model in storage_all when using this representation... (dependence on changes to vS are allowed, just not the absolute value)
     
     # compute hourly changes in stored energy within representative periods
     @expression(EP, eDeltaStoreInRepPeriod[y in STOR_LONG_DURATION, r=1:NRepPeriods, h=2:NHoursPerRepPeriod],
@@ -55,12 +52,12 @@ function long_duration_storage_sparse_chronology!(EP::Model, inputs::Dict, setup
                 + vCHARGE[y, NHoursPerRepPeriod*(r-1)+1]*efficiency_up(  gen[y]) )
     
     ### Implement sparse chonology equations and constraints from https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5061243 ###
-    # Total Constraints = 2*NRepPeriods + 3*NPartitions + 2*NPartitionsLongerThanOne + 2*NRepPeriods*(NHoursPerRepPeriod-1) = 2*11+3*21+2*13+2*11*167 = 3785
+    # Total Constraints = NRepPeriods + 3*NPartitions + 2*NPartitionsLongerThanOne + 2*NRepPeriods*(NHoursPerRepPeriod-1) = 11+3*21+2*13+2*11*167 = 3774
     # Total Variables   = 3*NRepPeriods + NPartitions) = 3*11+21 = 54       [not counting NHoursPerRepPeriod*NRepPeriods vS, vP, vCHARGE which are the same as other storage representations]
-    # variables in default GenX representation = vSOCw[NPeriods], vdSOC[NRepPeriods], vdSOC_maxPos[NRepPeriods], vdSOC_maxNeg[NRepPeriods] = 52+3*11 = 85
-    # there should be 31 fewer variables per battery with SC, and that is what I observe!
-    # constraints in default GenX representation = 2*NPeriods + 2*NRepPeriods + 2*(NPeriods-NRepPeriods) + 2*NRepPeriods*(NHoursPerRepPeriod-1) + NRepPeriods*NHoursPerRepPeriod = 4*52+2*11*167+1*11*168 = 5730
-    # there should be 1945 fewer constraints per battery with SC, which is what I observe!
+    #   Variables in default GenX representation = vSOCw[NPeriods], vdSOC[NRepPeriods], vdSOC_maxPos[NRepPeriods], vdSOC_maxNeg[NRepPeriods] = 52+3*11 = 85
+    # Constraints in default GenX representation = 2*NPeriods + 2*NRepPeriods + 2*(NPeriods-NRepPeriods) + 2*NRepPeriods*(NHoursPerRepPeriod-1) = 4*52+2*11*167 = 3882
+    # For this TDR example there are be 31 fewer variables per battery with SC
+    # and 108 fewer constraints per battery
 
     # (10): change in energy store over representative period
     @variable(EP,   vDeltaStoreRepPeriodLoop[y in STOR_LONG_DURATION, r=1:NRepPeriods]) # NRepPeriods
